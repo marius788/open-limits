@@ -3,9 +3,17 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace LimitLens
 {
+    internal static class AppInfo
+    {
+        public const string Version = "1.2.0";
+        public const string ProductName = "Limit Lens";
+        public const string UserAgent = "LimitLens/" + Version;
+    }
+
     internal sealed class UsageWindow
     {
         public string Label;
@@ -34,6 +42,14 @@ namespace LimitLens
         }
     }
 
+    internal static class ProviderCatalog
+    {
+        public static IUsageProvider[] Create()
+        {
+            return new IUsageProvider[] { new ClaudeProvider(), new CodexProvider(), new OpenCodeGoProvider(), new GeminiProvider() };
+        }
+    }
+
     internal static class AppPaths
     {
         public static readonly string Profile = Environment.GetEnvironmentVariable("USERPROFILE") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -55,7 +71,10 @@ namespace LimitLens
             try
             {
                 Directory.CreateDirectory(AppPaths.Data);
-                File.AppendAllText(AppPaths.Log, DateTimeOffset.Now.ToString("o") + "  " + message + Environment.NewLine, Encoding.UTF8);
+                string safeMessage = message ?? string.Empty;
+                safeMessage = Regex.Replace(safeMessage, "(?i)(Bearer\\s+)[^\\s\"']+", "$1[REDACTED]");
+                safeMessage = Regex.Replace(safeMessage, "(?i)((?:api[_-]?key|access[_-]?token|secret)\\s*[:=]\\s*)[^\\s,;\"']+", "$1[REDACTED]");
+                File.AppendAllText(AppPaths.Log, DateTimeOffset.Now.ToString("o") + "  " + safeMessage + Environment.NewLine, Encoding.UTF8);
             }
             catch { }
         }

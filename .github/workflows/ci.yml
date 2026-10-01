@@ -1,0 +1,25 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build application
+        shell: powershell
+        run: .\build.ps1
+      - name: Run tests
+        shell: powershell
+        run: .\tests\build-tests.ps1
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LimitLens-build
+          path: LimitLens.exe

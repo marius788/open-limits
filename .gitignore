@@ -4,6 +4,8 @@
 *.tmp
 /bin/
 /obj/
+/tests/*.exe
+/dist/
 
 # Local diagnostics and logs
 /diagnostics*.json
@@ -24,6 +26,10 @@
 auth.json
 *credentials*.json
 *secrets*.json
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Operating-system files
 Thumbs.db

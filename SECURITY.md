@@ -25,3 +25,9 @@ Teile keine echten API-Keys, OAuth-Tokens, Prompts, Projektdateien oder vollstä
 Limit Lens liest lokale Nutzungsinformationen mehrerer CLI-Werkzeuge. Besonders schützenswert ist der OpenCode-Key, der nur im Arbeitsspeicher zur direkten HTTPS-Abfrage der OpenCode Go Usage API verwendet wird. Der Key darf weder in Logs noch in Diagnoseausgaben oder den Verlaufsspeicher gelangen.
 
 Weitere Details stehen im Abschnitt **Datenschutz und Sicherheit** der README.
+
+## Automatische Prüfungen
+
+Jeder Push und Pull Request wird mit Gitleaks auf versehentlich eingecheckte
+Zugangsdaten geprüft. Ein echter Key darf auch nicht in einem Test, Beispiel,
+Commit oder Build-Artefakt abgelegt werden.

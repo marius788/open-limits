@@ -330,6 +330,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 # Optional: Diagnose lokal erzeugen, prüfen und anschließend nicht committen
 .\LimitLens.exe --diagnostics .\diagnostics.json
+
+# Tests ohne zusätzliche NuGet-Pakete
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\build-tests.ps1
 ```
 
 `diagnostics*.json`, Logs, lokale Konfigurationen und Build-Ausgaben sind in `.gitignore` ausgeschlossen.
@@ -345,7 +348,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 | `LIMITLENS_OPENCODE_DB` | Pfad zur OpenCode-v2-Datenbank | `%USERPROFILE%\.local\share\opencode\opencode.db` |
 | `LIMITLENS_OPENCODE_API_KEY` | expliziter OpenCode-Key für Tests oder Sonderkonfigurationen | nicht gesetzt |
 | `OPENCODE_API_KEY` | von OpenCode unterstützte Key-Variable | nicht gesetzt |
-| `LIMITLENS_OPENCODE_USAGE_URL` | alternatives Usage-Endpoint für Entwicklung und Tests | `https://opencode.ai/zen/go/v1/usage` |
+| `LIMITLENS_OPENCODE_USAGE_URL` | alternatives HTTPS-Endpoint unter `opencode.ai` für Entwicklung und Tests | `https://opencode.ai/zen/go/v1/usage` |
+| `LIMITLENS_REFRESH_MINUTES` | Aktualisierungsintervall in Minuten, begrenzt auf 1–60 | `5` |
 
 Variablen mit Zugangsdaten sollten nur lokal gesetzt und niemals in Dateien des Repositorys eingetragen werden.
 
@@ -368,6 +372,7 @@ tools/
 
 app.manifest         DPI- und Windows-Kompatibilität
 build.ps1            Build mit dem .NET-Framework-Compiler
+package.ps1          reproduzierbares ZIP-Paket mit SHA-256-Prüfsumme
 preview.png          UI-Vorschau mit Beispieldaten
 ```
 

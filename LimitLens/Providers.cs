@@ -193,6 +193,9 @@ namespace LimitLens
     internal sealed class OpenCodeGoProvider : IUsageProvider
     {
         private const string DefaultUsageUrl = "https://opencode.ai/zen/go/v1/usage";
+        private const int MaxResponseBytes = 1024 * 1024;
+        private const int MaxAttempts = 2;
+        private const int RetryDelayMs = 250;
 
         public ProviderSnapshot Fetch()
         {
@@ -216,18 +219,14 @@ namespace LimitLens
             {
                 string configuredUrl = Environment.GetEnvironmentVariable("LIMITLENS_OPENCODE_USAGE_URL");
                 string url = string.IsNullOrWhiteSpace(configuredUrl) ? DefaultUsageUrl : configuredUrl;
-                var request = (HttpWebRequest)WebRequest.Create(url);
-                request.Method = "GET";
-                request.Accept = "application/json";
-                request.UserAgent = "LimitLens/1.1";
-                request.Headers[HttpRequestHeader.Authorization] = "Bearer " + apiKey;
-                request.Timeout = 9000;
-                request.ReadWriteTimeout = 9000;
+                Uri endpoint;
+                if (!TryGetAllowedEndpoint(url, out endpoint))
+                {
+                    snap.Status = "OpenCode-Endpoint nicht zugelassen";
+                    return snap;
+                }
 
-                string body;
-                using (var response = (HttpWebResponse)request.GetResponse())
-                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-                    body = reader.ReadToEnd();
+                string body = FetchUsageBody(endpoint, apiKey);
 
                 Dictionary<string, object> usage = Json.Child(Json.Parse(body), "usage");
                 if (usage == null)
@@ -250,6 +249,69 @@ namespace LimitLens
             }
             catch { snap.Status = "OpenCode-Daten konnten nicht gelesen werden"; }
             return snap;
+        }
+
+        private static string FetchUsageBody(Uri endpoint, string apiKey)
+        {
+            for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+            {
+                try
+                {
+                    var request = (HttpWebRequest)WebRequest.Create(endpoint);
+                    request.Method = "GET";
+                    request.Accept = "application/json";
+                    request.UserAgent = AppInfo.UserAgent;
+                    request.Headers[HttpRequestHeader.Authorization] = "Bearer " + apiKey;
+                    request.Timeout = 9000;
+                    request.ReadWriteTimeout = 9000;
+                    request.AllowAutoRedirect = false;
+
+                    using (var response = (HttpWebResponse)request.GetResponse())
+                    using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+                        return ReadLimited(reader, MaxResponseBytes);
+                }
+                catch (WebException ex)
+                {
+                    HttpWebResponse response = ex.Response as HttpWebResponse;
+                    bool retry = response == null || IsTransient(response.StatusCode);
+                    if (response != null) response.Dispose();
+                    if (!retry || attempt == MaxAttempts) throw;
+                    System.Threading.Thread.Sleep(RetryDelayMs);
+                }
+            }
+            throw new InvalidOperationException("OpenCode-Abruf fehlgeschlagen.");
+        }
+
+        private static bool IsTransient(HttpStatusCode statusCode)
+        {
+            int code = (int)statusCode;
+            return statusCode == HttpStatusCode.RequestTimeout || statusCode == (HttpStatusCode)429 || code >= 500;
+        }
+
+        private static bool TryGetAllowedEndpoint(string value, out Uri endpoint)
+        {
+            endpoint = null;
+            Uri parsed;
+            if (!Uri.TryCreate(value, UriKind.Absolute, out parsed)) return false;
+            if (!string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(parsed.Host, "opencode.ai", StringComparison.OrdinalIgnoreCase)) return false;
+            endpoint = parsed;
+            return true;
+        }
+
+        private static string ReadLimited(StreamReader reader, int maxBytes)
+        {
+            var builder = new StringBuilder();
+            char[] buffer = new char[4096];
+            int bytes = 0;
+            int read;
+            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                bytes += Encoding.UTF8.GetByteCount(buffer, 0, read);
+                if (bytes > maxBytes) throw new InvalidDataException("OpenCode-Antwort ist zu groß.");
+                builder.Append(buffer, 0, read);
+            }
+            return builder.ToString();
         }
 
         private static void AddWindow(ProviderSnapshot snap, Dictionary<string, object> raw, string label)

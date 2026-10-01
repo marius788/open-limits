@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -21,10 +22,12 @@ namespace LimitLens
         private readonly Icon appIcon;
         private readonly ToolStripMenuItem remainingItem;
         private readonly ToolStripMenuItem startupItem;
+        private readonly ToolStripMenuItem statusItem;
         private readonly Timer timer;
         private readonly Timer startupTimer;
         private readonly HistoryStore history = new HistoryStore();
         private List<ProviderSnapshot> snapshots = new List<ProviderSnapshot>();
+        private readonly Dictionary<string, ProviderSnapshot> lastGoodSnapshots = new Dictionary<string, ProviderSnapshot>();
         private bool fetching;
         private Dictionary<string, int> lastRemaining = new Dictionary<string, int>();
 
@@ -37,18 +40,21 @@ namespace LimitLens
             menu.ForeColor = Color.White;
             menu.RenderMode = ToolStripRenderMode.System;
             menu.Items.Add("Aktualisieren", null, delegate { Refresh(); });
+            statusItem = new ToolStripMenuItem("Status: wird geladen") { Enabled = false };
+            menu.Items.Add(statusItem);
             remainingItem = new ToolStripMenuItem("Verbleibend anzeigen", null, delegate { ToggleRemaining(); }) { Checked = true };
             menu.Items.Add(remainingItem);
             startupItem = new ToolStripMenuItem("Mit Windows starten", null, delegate { ToggleStartup(); }) { Checked = IsStartupEnabled() };
             menu.Items.Add(startupItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Claude verbinden", null, delegate { ConnectClaude(); });
+            menu.Items.Add("Datenordner öffnen", null, delegate { OpenDataFolder(); });
             menu.Items.Add("Über Limit Lens", null, delegate { ShowAbout(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Beenden", null, delegate { ExitThread(); });
             tray = new NotifyIcon { Icon = appIcon, Text = "Limit Lens · lädt …", Visible = true, ContextMenuStrip = menu };
             tray.MouseClick += delegate(object sender, MouseEventArgs e) { if (e.Button == MouseButtons.Left) TogglePopup(); };
-            timer = new Timer { Interval = 5 * 60 * 1000 };
+            timer = new Timer { Interval = RefreshIntervalMilliseconds() };
             timer.Tick += delegate { Refresh(); };
             timer.Start();
             startupTimer = new Timer { Interval = 500 };
@@ -78,6 +84,25 @@ namespace LimitLens
             remainingItem.Checked = !remainingItem.Checked;
             popup.SetRemaining(remainingItem.Checked);
             UpdateTooltip();
+        }
+
+        private static int RefreshIntervalMilliseconds()
+        {
+            int minutes;
+            string configured = Environment.GetEnvironmentVariable("LIMITLENS_REFRESH_MINUTES");
+            if (!int.TryParse(configured, out minutes)) minutes = 5;
+            minutes = Math.Max(1, Math.Min(60, minutes));
+            return minutes * 60 * 1000;
+        }
+
+        private static void OpenDataFolder()
+        {
+            try
+            {
+                Directory.CreateDirectory(AppPaths.Data);
+                Process.Start(new ProcessStartInfo("explorer.exe", "\"" + AppPaths.Data + "\"") { UseShellExecute = false });
+            }
+            catch (Exception ex) { AppLog.Write("Datenordner konnte nicht geöffnet werden: " + ex.Message); }
         }
 
         private void ToggleStartup()
@@ -143,17 +168,46 @@ namespace LimitLens
             popup.SetData(snapshots, history.LastDay(), true);
             try
             {
-                IUsageProvider[] providers = { new ClaudeProvider(), new CodexProvider(), new OpenCodeGoProvider(), new GeminiProvider() };
+                IUsageProvider[] providers = ProviderCatalog.Create();
                 Task<ProviderSnapshot>[] tasks = providers.Select(p => Task.Run(() => p.Fetch())).ToArray();
                 ProviderSnapshot[] result = await Task.WhenAll(tasks);
-                snapshots = result.ToList();
+                snapshots = result.Select(MergeWithLastGood).ToList();
                 history.Add(snapshots);
                 popup.SetData(snapshots, history.LastDay(), false);
                 UpdateTooltip();
+                statusItem.Text = "Letzte Aktualisierung: " + DateTime.Now.ToString("HH:mm:ss");
                 CheckNotifications();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                statusItem.Text = "Aktualisierung fehlgeschlagen";
+                AppLog.Write("Aktualisierung fehlgeschlagen: " + ex.Message);
+            }
             finally { fetching = false; }
+        }
+
+        private ProviderSnapshot MergeWithLastGood(ProviderSnapshot current)
+        {
+            if (current == null) return current;
+            if (current.Windows.Count > 0)
+            {
+                lastGoodSnapshots[current.Name] = current;
+                return current;
+            }
+
+            ProviderSnapshot previous;
+            if (!lastGoodSnapshots.TryGetValue(current.Name, out previous)) return current;
+            var fallback = new ProviderSnapshot
+            {
+                Name = current.Name,
+                Mark = current.Mark,
+                Source = current.Source,
+                ObservedAt = previous.ObservedAt,
+                Status = current.Status + " · letzter Wert " + previous.ObservedAt.ToString("HH:mm")
+            };
+            foreach (UsageWindow window in previous.Windows)
+                fallback.Windows.Add(new UsageWindow { Label = window.Label, UsedPercent = window.UsedPercent, ResetsAt = window.ResetsAt, Detail = window.Detail });
+            return fallback;
         }
 
         private void UpdateTooltip()
@@ -268,7 +322,7 @@ namespace LimitLens
         private static void WriteDiagnostics(string path)
         {
             var result = new List<Dictionary<string, object>>();
-            IUsageProvider[] providers = { new ClaudeProvider(), new CodexProvider(), new OpenCodeGoProvider(), new GeminiProvider() };
+            IUsageProvider[] providers = ProviderCatalog.Create();
             foreach (IUsageProvider provider in providers)
             {
                 ProviderSnapshot snap = provider.Fetch();
