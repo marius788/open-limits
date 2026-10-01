@@ -102,7 +102,7 @@ namespace LimitLens
                 Directory.CreateDirectory(AppPaths.Data);
                 Process.Start(new ProcessStartInfo("explorer.exe", "\"" + AppPaths.Data + "\"") { UseShellExecute = false });
             }
-            catch (Exception ex) { AppLog.Write("Datenordner konnte nicht geöffnet werden: " + ex.Message); }
+            catch (Exception ex) { AppLog.Write("Datenordner konnte nicht geöffnet werden: " + ex.GetType().Name); }
         }
 
         private void ToggleStartup()
@@ -181,7 +181,7 @@ namespace LimitLens
             catch (Exception ex)
             {
                 statusItem.Text = "Aktualisierung fehlgeschlagen";
-                AppLog.Write("Aktualisierung fehlgeschlagen: " + ex.Message);
+                AppLog.Write("Aktualisierung fehlgeschlagen: " + ex.GetType().Name);
             }
             finally { fetching = false; }
         }
@@ -309,7 +309,7 @@ namespace LimitLens
             }
             catch (Exception ex)
             {
-                AppLog.Write("Schwerer Startfehler: " + ex);
+                AppLog.Write("Schwerer Startfehler: " + ex.GetType().Name);
                 MessageBox.Show("Limit Lens konnte nicht gestartet werden.\n\n" + ex.Message + "\n\nProtokoll: " + AppPaths.Log, "Limit Lens", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally

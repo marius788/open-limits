@@ -295,6 +295,8 @@ namespace LimitLens
             if (!Uri.TryCreate(value, UriKind.Absolute, out parsed)) return false;
             if (!string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
             if (!string.Equals(parsed.Host, "opencode.ai", StringComparison.OrdinalIgnoreCase)) return false;
+            if (!parsed.IsDefaultPort) return false;
+            if (!string.IsNullOrEmpty(parsed.UserInfo)) return false;
             endpoint = parsed;
             return true;
         }

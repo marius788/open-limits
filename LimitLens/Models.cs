@@ -74,6 +74,7 @@ namespace LimitLens
                 string safeMessage = message ?? string.Empty;
                 safeMessage = Regex.Replace(safeMessage, "(?i)(Bearer\\s+)[^\\s\"']+", "$1[REDACTED]");
                 safeMessage = Regex.Replace(safeMessage, "(?i)((?:api[_-]?key|access[_-]?token|secret)\\s*[:=]\\s*)[^\\s,;\"']+", "$1[REDACTED]");
+                if (safeMessage.Length > 4096) safeMessage = safeMessage.Substring(0, 4096) + " …[TRUNCATED]";
                 File.AppendAllText(AppPaths.Log, DateTimeOffset.Now.ToString("o") + "  " + safeMessage + Environment.NewLine, Encoding.UTF8);
             }
             catch { }
